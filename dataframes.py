@@ -88,7 +88,7 @@ class DataframeFile(File):
         self.mode = mode
 
     def execute(self, *args, **kwargs):
-        return DataframeHandler[self.mode](self.source, *args, mode=self.mode, **kwargs)
+        return DataframeHandler[self.mode](self.source, *args, **kwargs)
 
     def close(self, *args, **kwargs):
         archive, file = self.archivefile

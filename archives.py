@@ -14,9 +14,11 @@ from zipfile import ZipFile
 from utilities.meta import RegistryMeta, LockingMeta
 from utilities.dispatchers import keyword_single_dispatcher as dispatcher
 
+from files.files import FileBase
+
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["Archive"]
+__all__ = ["ArchiveBase", "Archive", "ArchiveHandler"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -26,139 +28,100 @@ _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) e
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 
 
-class ArchiveBase(object):
-    def __init__(self, *args, directory, **kwargs):
-        self.__directory = directory
-        self.__archive = None
-        self.__mode = None
-        self.__handler = None
-
-    def __repr__(self): return "{}(directory={})".format(self.__class__.__name__, self.directory)
-    def __str__(self): return str(self.directory)
-    def __bool__(self): return self.mode is not None
-
-    def __enter__(self): return self
-    def __exit__(self, error_type, error_value, error_traceback): self.close()
-
-    def __call__(self, *args, **kwargs):
-        if self.handler is None:
-            self.handler = self.execute(*args, **kwargs)
-        return self.handler
+class ArchiveBase(FileBase, ABC):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__destination = None
 
     @property
-    def directory(self): return self.__directory
-    @property
-    def archive(self): return self.__archive
-    @archive.setter
-    def archive(self, archive): self.__archive = archive
-    @property
-    def handler(self): return self.__handler
-    @handler.setter
-    def handler(self, handler): self.__handler = handler
-    @property
-    def mode(self): self.__mode
-    @mode.setter
-    def mode(self, mode): self.__mode = mode
-
-    def open(self, *args, mode, **kwargs):
-        if mode not in ("r", "w"):
-            raise ValueError(mode)
-        self.archive = ZipFile.open(self.directory, mode="r") if mode == "r" else BytesIO()
-        self.mode = mode
-
-    def execute(self, *args, **kwargs):
-        return ArchiveHandler[self.mode](self.archive, *args, mode=self.mode, **kwargs)
-
-    def close(self, *args, **kwargs):
-        if self.mode == "w":
-            archive = open(self.directory, "wb")
-            archive.write(self.archive.getbuffer())
-            archive.close()
-        self.archive.close()
-        self.archive = None
-        self.mode = None
-
-    def copy(self, archive, exclude=[]):
-        reader = ArchiveReader(archive)
-        writer = ArchiveWriter(self)
-        for file in iter(reader):
-            if file not in _filter(exclude):
-                writer[file] = reader[file]
+    def destination(self): return self.__destination
 
 
 class Archive(ArchiveBase, metaclass=LockingMeta):
-    def __new__(cls, *args, directory, mode, **kwargs):
-        if mode not in ("r", "w", "a", "x"):
-            raise ValueError(mode)
-        if mode in ("r", "a") and not os.path.exist(directory):
-            raise FileNotFoundError(str(directory))
-        elif mode == "x" and os.path.exist(directory):
-            raise FileExistsError(str(directory))
-        cls.lock(directory)
-        instance = super().__new__(cls)
-        instance.open(*args, mode=mode, **kwargs)
-        return instance
+    def __new__(cls, *args, file, mode, **kwargs):
+        pass
 
-    @dispatcher("mode")
-    def open(self, *args, mode, **kwargs): raise KeyError(mode)
-    @open.register("r")
-    def open_reader(self, *args, mode, **kwargs): super().open(*args, mode="r", **kwargs)
-    @open.register("w", "x")
-    def open_writer(self, *args, mode, **kwargs): super().open(*args, mode="w", **kwargs)
+    def open(self, *args, mode, **kwargs):
+        pass
 
-    @open.register("a")
-    def open_appender(self, *args, mode, **kwargs):
-        archive = Archive(*args, directory=self.directory, **kwargs)
-        archive.open(*args, mode="r", **kwargs)
-        super().open(*args, mode="w", **kwargs)
-        self.copy(archive, exclude=[])
-        archive.close(*args, **kwargs)
+    def execute(self, *args, **kwargs):
+        pass
 
     def close(self, *args, **kwargs):
-        super().close(*args, **kwargs)
-        self.unlock(self.directory)
-
-
-class FileArchive(ArchiveBase, metaclass=LockingMeta):
-    def __new__(cls, *args, directory, file, mode, **kwargs):
-        if not os.path.exist(directory):
-            raise FileNotFoundError(str(directory))
-        cls.lock(directory)
-        instance = super().__new__(cls)
-        instance.open(*args, mode=mode, **kwargs)
-        return instance
-
-    @dispatcher("mode")
-    def open(self, *args, mode, **kwargs): raise KeyError(mode)
-    @open.register("r")
-    def open_reader(self, *args, mode, **kwargs): pass
-    @open.register("w")
-    def open_writer(self, *args, mode, **kwargs): pass
-    @open.register("x")
-    def open_creator(self, *args, mode, **kwargs): pass
-    @open.register("a")
-    def open_appender(self, *args, mode, **kwargs): pass
-
-    def close(self, *args, **kwargs):
-        super().close(*args, **kwargs)
-        self.unlock(self.directory)
+        pass
 
 
 class ArchiveHandler(ABC, metaclass=RegistryMeta):
-    def __init__(self, archive, *args, **kwargs): self.__archive = archive
-    def __iter__(self): return (file for file in self.archive.namelist())
-    def __contains__(self, file): return file in self.archive.namelist()
-
+    def __init__(self, source, *args, **kwargs): self.__source = source
+    def __iter__(self): return (file for file in self.source.namelist())
+    def __contains__(self, file): return file in self.source.namelist()
     @property
-    def archive(self): return self.__archive
+    def source(self): return self.__source
 
 
 class ArchiveReader(ArchiveHandler, key="r"):
-    def __getitem__(self, file): return self.archive.read(file)
+    def __getitem__(self, file): return self.source.read(file)
 
 
 class ArchiveWriter(ArchiveHandler, keys="w"):
-    def __setitem__(self, file, content): self.archive.writestr(file, content)
+    def __setitem__(self, file, content): self.source.writestr(file, content)
+
+
+# class ArchiveBase(FileBase):
+#     def open(self, *args, mode, **kwargs):
+#         if mode not in ("r", "w"):
+#             raise ValueError(mode)
+#         directory = self.directory if mode == "r" else self.temporary
+#         self.archive = ZipFile.open(directory, mode=mode)
+#         self.mode = mode
+#
+#     def execute(self, *args, **kwargs):
+#         return ArchiveHandler[self.mode](self.archive, *args, **kwargs)
+#
+#     def close(self, *args, **kwargs):
+#         self.archive.close()
+#         self.archive = None
+#         self.mode = None
+#
+#     def copy(self, archive, *args, exclude=[], **kwargs):
+#         reader = ArchiveReader(archive, *args, **kwargs)
+#         writer = ArchiveWriter(self, *args, **kwargs)
+#         for file in iter(reader):
+#             if file not in _filter(exclude):
+#                 writer[file] = reader[file]
+
+
+# class Archive(ArchiveBase, metaclass=LockingMeta):
+#     def __new__(cls, *args, directory, mode, **kwargs):
+#         if mode not in ("r", "w", "a", "x"):
+#             raise ValueError(mode)
+#         if mode in ("r", "a") and not os.path.exist(directory):
+#             raise FileNotFoundError(str(directory))
+#         elif mode == "x" and os.path.exist(directory):
+#             raise FileExistsError(str(directory))
+#         cls.lock(directory)
+#         instance = super().__new__(cls)
+#         instance.open(*args, mode=mode, **kwargs)
+#         return instance
+#
+#     @dispatcher("mode")
+#     def open(self, *args, mode, **kwargs): raise KeyError(mode)
+#     @open.register("r")
+#     def open_reader(self, *args, mode, **kwargs): super().open(*args, mode="r", **kwargs)
+#     @open.register("w", "x")
+#     def open_writer(self, *args, mode, **kwargs): super().open(*args, mode="w", **kwargs)
+#
+#     @open.register("a")
+#     def open_appender(self, *args, mode, **kwargs):
+#         archive = ArchiveBase(*args, directory=self.directory, **kwargs)
+#         archive.open(*args, mode="r", **kwargs)
+#         super().open(*args, mode="w", **kwargs)
+#         self.copy(archive, *args, exclude=[], **kwargs)
+#         archive.close(*args, **kwargs)
+#
+#     def close(self, *args, **kwargs):
+#         super().close(*args, **kwargs)
+#         self.unlock(self.directory)
 
 
 

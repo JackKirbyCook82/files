@@ -7,12 +7,13 @@ Created on Weds Jan 12 2022
 """
 
 from enum import Enum
+from abc import ABC, abstractmethod
 
 from utilities.meta import RegistryMeta, LockingMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["File", "FileLocation"]
+__all__ = ["FileBase", "File", "FileHandler", "FileLocation"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -25,7 +26,7 @@ _flatten = lambda y: [i for x in y for i in x]
 FileLocation = Enum("FileLocation", "START CURRENT STOP", start=0)
 
 
-class FileBase(object):
+class FileBase(ABC):
     def __init__(self, *args, file, **kwargs):
         self.__file = file
         self.__source = None
@@ -59,20 +60,12 @@ class FileBase(object):
     @mode.setter
     def mode(self, mode): self.__mode = mode
 
-    def open(self, *args, mode, **kwargs):
-        if mode not in ("r", "w", "a", "x"):
-            raise ValueError(mode)
-        self.source = open(self.file, mode=mode)
-        self.mode = mode
-
-    def execute(self, *args, **kwargs):
-        return FileHandler[self.mode](self.source, *args, mode=self.mode, **kwargs)
-
-    def close(self, *args, **kwargs):
-        self.source.close()
-        self.source = None
-        self.handler = None
-        self.mode = None
+    @abstractmethod
+    def open(self, *args, mode, **kwargs): pass
+    @abstractmethod
+    def execute(self, *args, **kwargs): pass
+    @abstractmethod
+    def close(self, *args, **kwargs): pass
 
 
 class File(FileBase, metaclass=LockingMeta):
@@ -82,9 +75,20 @@ class File(FileBase, metaclass=LockingMeta):
         instance.open(*args, mode=mode, **kwargs)
         return instance
 
+    def open(self, *args, mode, **kwargs):
+        if mode not in ("r", "w", "a", "x"):
+            raise ValueError(mode)
+        self.source = open(self.file, mode=mode)
+        self.mode = mode
+
+    def execute(self, *args, **kwargs):
+        return FileHandler[self.mode](self.source, *args, **kwargs)
+
     def close(self, *args, **kwargs):
-        super().close(*args, **kwargs)
-        self.unlock(self.directory)
+        self.source.close()
+        self.source = None
+        self.handler = None
+        self.mode = None
 
 
 class FileHandler(object, metaclass=RegistryMeta):

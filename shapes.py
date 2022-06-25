@@ -67,7 +67,7 @@ class ShapeFile(File):
         self.mode = mode
 
     def execute(self, *args, **kwargs):
-        return ShapeHandler[self.mode](self.source, *args, mode=self.mode, geometry=self.geometry, fields=self.fields, **kwargs)
+        return ShapeHandler[self.mode](self.source, *args, geometry=self.geometry, fields=self.fields, **kwargs)
 
     def close(self, *args, **kwargs):
         self.source.close()
