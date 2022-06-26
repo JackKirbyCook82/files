@@ -30,28 +30,28 @@ _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 _combine = lambda dataframes: pd.concat(_filter(list(dataframes), None), axis=0, ignore_index=True).drop_duplicates(inplace=True, ignore_index=True, keep="last")
 
 
-class DataframeRecord(object):
-    def __init__(self, dataframe): self.__dataframe = dataframe
-    def __call__(self, dataframe): self.__dataframe = _combine(dataframe)
-
-    @property
-    def dataframe(self): return self.__dataframe
-    @classmethod
-    def empty(cls, *args, **kwargs): return cls(None)
-
-    @classmethod
-    def load(cls, file, *args, archive, **kwargs):
-        compression = dict(method="zip", archive_name=file) if archive is not None else None
-        file = archive if archive is not None else file
-        dataframe = pd.read_csv(file, compression=compression, index_col=None, header=0, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
-        dataframe = dataframe.to_frame() if not isinstance(dataframe, pd.DataFrame) else dataframe
-        return cls(dataframe)
-
-    def save(self, file, *args, archive=None, **kwargs):
-        compression = dict(method="zip", archive_name=file) if archive is not None else None
-        file = archive if archive is not None else file
-        dataframe = self.dataframe.replace(to_replace=NAN_TOFILE, value=np.nan)
-        dataframe.to_csv(file, compression=compression, index=False, header=True)
+# class DataframeRecord(object):
+#     def __init__(self, dataframe): self.__dataframe = dataframe
+#     def __call__(self, dataframe): self.__dataframe = _combine(dataframe)
+#
+#     @property
+#     def dataframe(self): return self.__dataframe
+#     @classmethod
+#     def empty(cls, *args, **kwargs): return cls(None)
+#
+#     @classmethod
+#     def load(cls, file, *args, archive, **kwargs):
+#         compression = dict(method="zip", archive_name=file) if archive is not None else None
+#         file = archive if archive is not None else file
+#         dataframe = pd.read_csv(file, compression=compression, index_col=None, header=0, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
+#         dataframe = dataframe.to_frame() if not isinstance(dataframe, pd.DataFrame) else dataframe
+#         return cls(dataframe)
+#
+#     def save(self, file, *args, archive=None, **kwargs):
+#         compression = dict(method="zip", archive_name=file) if archive is not None else None
+#         file = archive if archive is not None else file
+#         dataframe = self.dataframe.replace(to_replace=NAN_TOFILE, value=np.nan)
+#         dataframe.to_csv(file, compression=compression, index=False, header=True)
 
 
 class DataframeFile(File):

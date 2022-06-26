@@ -6,17 +6,12 @@ Created on Weds Jan 12 2022
 
 """
 
-__version__ = "1.0.0"
-__author__ = "Jack Kirby Cook"
-__all__ = ["CSVFile"]
-__copyright__ = "Copyright 2022, Jack Kirby Cook"
-__license__ = ""
-
-
 import csv
+from abc import ABC
+
+from utilities.meta import RegistryMeta
 
 from files.files import File, FileLocation
-from utilities.meta import RegistryMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -32,15 +27,17 @@ _flatten = lambda y: [i for x in y for i in x]
 
 class CSVFile(File):
     def __init__(self, *args, fields=None, **kwargs):
-        self.__fields = fields
         super().__init__(*args, **kwargs)
+        self.__fields = fields
 
     @property
     def fields(self): return self.__fields
-    def execute(self, *args, **kwargs): return CSVHandler[self.mode](self.source, *args, fields=self.fields, **kwargs)
+
+    def execute(self, *args, **kwargs):
+        return CSVHandler[self.mode](self.source, *args, fields=self.fields, **kwargs)
 
 
-class CSVHandler(object, metaclass=RegistryMeta):
+class CSVHandler(ABC, metaclass=RegistryMeta):
     def __init__(self, source, *args, fields=None, header, **kwargs):
         assert isinstance(fields, (list, type(None)))
         assert isinstance(header, list)

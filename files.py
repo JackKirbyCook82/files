@@ -6,14 +6,14 @@ Created on Weds Jan 12 2022
 
 """
 
+from abc import ABC
 from enum import Enum
-from abc import ABC, abstractmethod
 
 from utilities.meta import RegistryMeta, LockingMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["FileBase", "File", "FileHandler", "FileLocation"]
+__all__ = ["File", "FileLocation"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -21,12 +21,26 @@ __license__ = ""
 _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _flatten = lambda y: [i for x in y for i in x]
+_source = lambda file, *a, mode, **kw: open(file, mode=mode)
 
 
 FileLocation = Enum("FileLocation", "START CURRENT STOP", start=0)
 
 
-class FileBase(ABC):
+class FileMeta(LockingMeta):
+    def __init__(cls, *args, **kwargs):
+        cls._source = kwargs.get("source", getattr(cls, "source", None))
+
+    def __call__(cls, *args, file, **kwargs):
+        assert cls._source is not None
+        assert callable(cls._source)
+        cls.lock(file)
+        instance = super(FileMeta, cls).__call__(*args, file=file, **kwargs)
+        instance.open(*args, source=cls._source, **kwargs)
+        return instance
+
+
+class File(object, metaclass=FileMeta, source=_source):
     def __init__(self, *args, file, **kwargs):
         self.__file = file
         self.__source = None
@@ -55,30 +69,21 @@ class FileBase(ABC):
     def handler(self): return self.__handler
     @handler.setter
     def handler(self, handler): self.__handler = handler
+
     @property
     def mode(self): self.__mode
     @mode.setter
     def mode(self, mode): self.__mode = mode
+    @property
+    def readable(self): return self.mode == "r"
+    @property
+    def writeable(self): return self.mode in ("w", "x", "a")
 
-    @abstractmethod
-    def open(self, *args, mode, **kwargs): pass
-    @abstractmethod
-    def execute(self, *args, **kwargs): pass
-    @abstractmethod
-    def close(self, *args, **kwargs): pass
-
-
-class File(FileBase, metaclass=LockingMeta):
-    def __new__(cls, *args, file, mode, **kwargs):
-        cls.lock(file)
-        instance = super().__new__(cls)
-        instance.open(*args, mode=mode, **kwargs)
-        return instance
-
-    def open(self, *args, mode, **kwargs):
+    def open(self, *args, mode, source, **kwargs):
+        assert callable(source)
         if mode not in ("r", "w", "a", "x"):
             raise ValueError(mode)
-        self.source = open(self.file, mode=mode)
+        self.source = source(self.file, *args, mode=mode, **kwargs)
         self.mode = mode
 
     def execute(self, *args, **kwargs):
@@ -91,8 +96,10 @@ class File(FileBase, metaclass=LockingMeta):
         self.mode = None
 
 
-class FileHandler(object, metaclass=RegistryMeta):
-    def __init__(self, source, *args, **kwargs): self.__source = source
+class FileHandler(ABC, metaclass=RegistryMeta):
+    def __init__(self, source, *args, **kwargs):
+        self.__source = source
+
     @property
     def source(self): return self.__source
 

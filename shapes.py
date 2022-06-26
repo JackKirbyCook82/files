@@ -7,41 +7,49 @@ Created on Fri Jun 24 2022
 """
 
 import fiona
+from abc import ABC
 from collections import OrderedDict as ODict
 
-from files.files import File
 from utilities.meta import RegistryMeta
+
+from files.files import File
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = []
+__all__ = ["ShapeFile"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
 
-class ShapeRecord(object):
-    def __init__(self, shape, record):
-        self.__shape = shape
-        self.__record = record
-
-    @property
-    def shape(self): return self.__shape
-    @property
-    def record(self): return self.__record
-
-    @classmethod
-    def deserialize(cls, contents, *args, **kwargs):
-        shape = Shape.deserialize(contents["geometry"])
-        record = ODict([(key, value) for key, value in contents["properties"]])
-        return cls(shape, record)
-
-    def serialize(self, *args, fields, **kwargs):
-        geometry = self.shape.serialize()
-        properties = ODict([(field, self.record.get(field, None)) for field in fields])
-        return {"geometry": geometry, "properties": properties}
+_aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
+_astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
+_filter = lambda items, by: [item for item in _aslist(items) if item is not by]
+_source = lambda file, *a, mode, driver, crs, schema, **kw: fiona(file, mode=mode, driver=driver, crs=crs, schema=schema)
 
 
-class ShapeFile(File):
+# class ShapeRecord(object):
+#     def __init__(self, shape, record):
+#         self.__shape = shape
+#         self.__record = record
+#
+#     @property
+#     def shape(self): return self.__shape
+#     @property
+#     def record(self): return self.__record
+#
+#     @classmethod
+#     def deserialize(cls, contents, *args, **kwargs):
+#         shape = Shape.deserialize(contents["geometry"])
+#         record = ODict([(key, value) for key, value in contents["properties"]])
+#         return cls(shape, record)
+#
+#     def serialize(self, *args, fields, **kwargs):
+#         geometry = self.shape.serialize()
+#         properties = ODict([(field, self.record.get(field, None)) for field in fields])
+#         return {"geometry": geometry, "properties": properties}
+
+
+class ShapeFile(File, opener=fiona.open):
     def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
         self.__driver = driver
         self.__crs = crs
@@ -61,22 +69,13 @@ class ShapeFile(File):
     def schema(self): return {"geometry": self.geometry, "properties": self.fields}
 
     def open(self, *args, mode, **kwargs):
-        if mode not in ("r", "w", "a", "x"):
-            raise ValueError(mode)
-        self.source = fiona.open(self.file, mode=self.mode, driver=self.driver, crs=self.crs, schema=self.schema)
-        self.mode = mode
+        super().open(*args, driver=self.driver, crs=self.crs, schema=self.schema, **kwargs)
 
     def execute(self, *args, **kwargs):
         return ShapeHandler[self.mode](self.source, *args, geometry=self.geometry, fields=self.fields, **kwargs)
 
-    def close(self, *args, **kwargs):
-        self.source.close()
-        self.source = None
-        self.mode = None
-        self.unlock()
 
-
-class ShapeHandler(object, metaclass=RegistryMeta):
+class ShapeHandler(ABC, metaclass=RegistryMeta):
     def __init__(self, source, *args, geometry, fields, **kwargs):
         self.__source = source
         self.__geometry = geometry
