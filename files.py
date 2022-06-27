@@ -66,8 +66,8 @@ class FileBase(ABC):
 
 class FileMeta(LockingMeta, ABCMeta):
     def __call__(cls, *args, file, **kwargs):
-        cls.lock(file)
         instance = super(FileMeta, cls).__call__(*args, **kwargs)
+        instance.lock(str(instance))
         instance.open(*args, **kwargs)
         return instance
 
@@ -102,7 +102,7 @@ class File(FileBase, metaclass=FileMeta):
         self.source = None
         self.handler = None
         self.mode = None
-        self.unlock(self.file)
+        self.unlock(str(self))
 
 
 class FileHandler(ABC, metaclass=RegistryMeta):

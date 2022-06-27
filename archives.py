@@ -31,19 +31,10 @@ class ArchiveBase(FileBase, ABC):
 
 class ArchiveMeta(FileMeta, ABCMeta):
     def __call__(cls, *args, directory, **kwargs):
-        cls.lock(directory)
         instance = super(FileMeta, cls).__call__(*args, **kwargs)
+        instance.lock(str(instance))
         instance.open(*args, **kwargs)
-        cls.copy(instance.source, instance.destination, exclude=[])
         return instance
-
-    @staticmethod
-    def copy(source, destination, exclude=[]):
-        assert isinstance(exclude, list)
-        for file in source.namelist():
-            if file not in exclude:
-                content = source.read(file)
-                destination.writestr(file, content)
 
 
 class Archive(ArchiveBase, metaclass=ArchiveMeta):
@@ -77,8 +68,8 @@ class Archive(ArchiveBase, metaclass=ArchiveMeta):
         self.source = ZipFile(self.directory, mode="r")
         self.destination = ZipFile(BytesIO(), mode="w")
 
-    def execute(self, *args, file, mode, **kwargs):
-        pass
+#    def execute(self, *args, file, mode, **kwargs):
+#        self.copy()
 
     def close(self, *args, **kwargs):
         self.source.close()
@@ -91,19 +82,19 @@ class Archive(ArchiveBase, metaclass=ArchiveMeta):
         self.destination = None
         self.handler = None
         self.mode = None
-        self.unlock()
+        self.unlock(str(self))
+
+    @staticmethod
+    def copy(source, destination, exclude=[]):
+        assert isinstance(exclude, list)
+        for file in source.namelist():
+            if file not in exclude:
+                content = source.read(file)
+                destination.writestr(file, content)
 
 
-class ArchiveFileBase(FileBase, ABC):
-    pass
-
-
-class ArchiveFileMeta(FileMeta, ABCMeta):
-    def __call__(cls, *args, directory, file, **kwargs):
-        cls.lock("|".join([str(directory), str(file)]))
-        instance = super(FileMeta, cls).__call__(*args, **kwargs)
-        instance.open(*args, **kwargs)
-        return instance
+class ArchiveFileBase(FileBase, ABC): pass
+class ArchiveFileMeta(FileMeta, ABCMeta): pass
 
 
 class ArchiveFile(ArchiveFileBase, metaclass=ArchiveFileMeta):
@@ -131,15 +122,15 @@ class ArchiveFile(ArchiveFileBase, metaclass=ArchiveFileMeta):
         self.source = archive.open(self.file, mode=mode)
         self.mode = mode
 
-    def execute(self, *args, **kwargs):
-        return
+#    def execute(self, *args, **kwargs):
+#        pass
 
     def close(self, *args, **kwargs):
         self.source.close()
         self.source = None
         self.handler = None
         self.mode = None
-        self.unlock("|".join([str(self.directory), str(self.file)]))
+        self.unlock(str(self))
 
 
 
