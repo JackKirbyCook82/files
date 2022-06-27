@@ -33,6 +33,9 @@ class CSVFile(File):
     @property
     def fields(self): return self.__fields
 
+    def execute(self, *args, **kwargs):
+        return CSVHandler[self.mode](self.source, *args, **kwargs)
+
 
 class CSVHandler(ABC, metaclass=RegistryMeta):
     def __init__(self, source, *args, fields=None, header, **kwargs):

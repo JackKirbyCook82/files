@@ -9,11 +9,11 @@ Created on Fri Jun 22 2018
 import os.path
 import pandas as pd
 import numpy as np
-from abc import ABC, ABCMeta
+from abc import ABC
 
 from utilities.meta import RegistryMeta
 
-from files.files import FileMeta, FileBase
+from files.files import File
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -59,11 +59,7 @@ class DataframeRecord(object):
         dataframe.to_csv(file, compression=compression, index=False, header=True)
 
 
-class DataframeBase(FileBase, ABC): pass
-class DataframeMeta(FileMeta, ABCMeta): pass
-
-
-class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
+class DataframeFile(File):
     def __init__(self, *args, file, **kwargs):
         head, tail = os.path.split(file)
         name, ext = str(tail).split(".")
@@ -75,10 +71,8 @@ class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
             file = os.path.join(head, ".".join([name, "csv"]))
         else:
             raise ValueError(file)
+        super().__init__(*args, file=file, **kwargs)
         self.__directory = directory
-        self.__file = file
-        self.__source = None
-        super().__init__(*args, **kwargs)
 
     def __repr__(self):
         string = "{cls}(directory={directory})" if self.directory is not None else "{cls}(file={file})"
@@ -90,12 +84,9 @@ class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
 
     @property
     def directory(self): return self.__directory
-    @property
-    def file(self): return self.__file
-    @property
-    def source(self): return self.__source
-    @source.setter
-    def source(self, source): self.__source = source
+
+    def opener(self, *args, mode, **kwargs):
+        return DataframeRecord.load(self.file, archive=self.directory) if mode in ("r", "a") else DataframeRecord()
 
     def open(self, *args, mode, **kwargs):
         if mode not in ("r", "w", "a", "x"):
@@ -104,8 +95,7 @@ class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
             raise FileNotFoundError(str(self.file))
         elif mode == "x" and os.path.exist(self.file):
             raise FileExistsError(str(self.file))
-        self.source = DataframeRecord.load(self.file, archive=self.directory) if mode in ("r", "a") else DataframeRecord()
-        self.mode = mode
+        super().open(*args, mode=mode, **kwargs)
 
     def execute(self, *args, **kwargs):
         return DataframeHandler[self.mode](self.source, *args, **kwargs)
@@ -113,14 +103,10 @@ class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
     def close(self, *args, **kwargs):
         if self.mode in ("w", "a", "x"):
             self.source.save(self.file, archive=self.directory)
-        self.source.close()
-        self.source = None
-        self.handler = None
-        self.mode = None
-        self.unlock()
+        super().close(*args, **kwargs)
 
 
-class DataframeHandler(object, metaclass=RegistryMeta):
+class DataframeHandler(ABC, metaclass=RegistryMeta):
     def __init__(self, source, *args, **kwargs): self.__source = source
     @property
     def source(self): return self.source

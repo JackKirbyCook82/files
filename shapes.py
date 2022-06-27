@@ -7,13 +7,13 @@ Created on Fri Jun 24 2022
 """
 
 import fiona
-from abc import ABC, ABCMeta
+from abc import ABC
 from collections import OrderedDict as ODict
 
 from utilities.meta import RegistryMeta
 from utilities.shapes import Shape
 
-from files.files import FileMeta, FileBase
+from files.files import File
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -49,26 +49,14 @@ class ShapeRecord(object):
         return {"geometry": geometry, "properties": properties}
 
 
-class ShapeBase(FileBase, ABC): pass
-class ShapeMeta(FileMeta, ABCMeta): pass
-
-
-class ShapeFile(ShapeBase, metaclass=ShapeMeta, key="file"):
-    def __init__(self, *args, file, driver=None, crs=None, geometry=None, fields=None, **kwargs):
-        self.__file = file
-        self.__source = None
+class ShapeFile(File):
+    def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__driver = driver
         self.__crs = crs
         self.__geometry = geometry
         self.__fields = fields
-        super().__init__(*args, **kwargs)
 
-    @property
-    def file(self): return self.__file
-    @property
-    def source(self): return self.__source
-    @source.setter
-    def source(self, source): self.__source = source
     @property
     def driver(self): return self.__driver
     @property
@@ -80,21 +68,11 @@ class ShapeFile(ShapeBase, metaclass=ShapeMeta, key="file"):
     @property
     def schema(self): return {"geometry": self.geometry, "properties": self.fields}
 
-    def open(self, *args, mode, **kwargs):
-        if mode not in ("r", "w", "a", "x"):
-            raise ValueError(mode)
-        self.source = fiona.open(self.file, mode=mode, driver=self.driver, crs=self.crs, schema=self.schema)
-        self.mode = mode
+    def opener(self, *args, mode, **kwargs):
+        return fiona.open(self.file, mode=mode, driver=self.driver, crs=self.crs, schema=self.schema)
 
     def execute(self, *args, **kwargs):
         return ShapeHandler[self.mode](self.source, *args, geometry=self.geometry, fields=self.fields, **kwargs)
-
-    def close(self, *args, **kwargs):
-        self.source.close()
-        self.source = None
-        self.handler = None
-        self.mode = None
-        self.unlock()
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):
