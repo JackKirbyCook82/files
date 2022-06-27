@@ -9,9 +9,11 @@ Created on Fri Jun 22 2018
 import os.path
 import pandas as pd
 import numpy as np
+from abc import ABC, ABCMeta
 
-from files.files import File
 from utilities.meta import RegistryMeta
+
+from files.files import FileMeta, FileBase
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -27,75 +29,93 @@ NAN_FROMFILE = ["", "nan", "NaN", "NA", "N/A", "None"]
 _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
-_combine = lambda dataframes: pd.concat(_filter(list(dataframes), None), axis=0, ignore_index=True).drop_duplicates(inplace=True, ignore_index=True, keep="last")
+_concat = lambda dataframes: pd.concat(dataframes, axis=0, ignore_index=True).drop_duplicates(inplace=True, ignore_index=True, keep="last")
 
 
-# class DataframeRecord(object):
-#     def __init__(self, dataframe): self.__dataframe = dataframe
-#     def __call__(self, dataframe): self.__dataframe = _combine(dataframe)
-#
-#     @property
-#     def dataframe(self): return self.__dataframe
-#     @classmethod
-#     def empty(cls, *args, **kwargs): return cls(None)
-#
-#     @classmethod
-#     def load(cls, file, *args, archive, **kwargs):
-#         compression = dict(method="zip", archive_name=file) if archive is not None else None
-#         file = archive if archive is not None else file
-#         dataframe = pd.read_csv(file, compression=compression, index_col=None, header=0, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
-#         dataframe = dataframe.to_frame() if not isinstance(dataframe, pd.DataFrame) else dataframe
-#         return cls(dataframe)
-#
-#     def save(self, file, *args, archive=None, **kwargs):
-#         compression = dict(method="zip", archive_name=file) if archive is not None else None
-#         file = archive if archive is not None else file
-#         dataframe = self.dataframe.replace(to_replace=NAN_TOFILE, value=np.nan)
-#         dataframe.to_csv(file, compression=compression, index=False, header=True)
+class DataframeRecord(object):
+    def __init__(self, dataframe=None):
+        self.__dataframe = dataframe
 
-
-class DataframeFile(File):
-    def __init__(self, *args, file, mode, **kwargs):
-        if mode not in ("r", "w", "a", "x"):
-            raise KeyError(mode)
-        if not str(file).endswith(".zip") and not str(file).endswith(".csv"):
-            raise ValueError(str(file))
-        if mode in ("r", "a") and not os.path.exist(file):
-            raise FileNotFoundError(str(file))
-        elif mode == "x" and os.path.exist(file):
-            raise FileExistsError(str(file))
-        else:
-            pass
-        super().__init__(*args, **kwargs)
+    def __call__(self, dataframe=None):
+        dataframes = _filter([self.dataframe, dataframe])
+        dataframe = _concat(dataframes)
+        self.__dataframe = dataframe
 
     @property
-    def archivefile(self):
-        directory, base = os.path.split(self.file)
-        filename, fileext = str(base).split(".")
-        if str(base).endswith(".zip"):
-            archive = os.path.join(directory, ".".join([filename, "zip"]))
-            file = ".".join([base, "csv"])
+    def dataframe(self): return self.__dataframe
+
+    @classmethod
+    def load(cls, file, *args, archive=None, **kwargs):
+        compression = dict(method="zip", archive_name=file) if archive is not None else None
+        file = archive if archive is not None else file
+        dataframe = pd.read_csv(file, compression=compression, index_col=None, header=0, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
+        dataframe = dataframe.to_frame() if not isinstance(dataframe, pd.DataFrame) else dataframe
+        return cls(dataframe)
+
+    def save(self, file, *args, archive=None, **kwargs):
+        compression = dict(method="zip", archive_name=file) if archive is not None else None
+        file = archive if archive is not None else file
+        dataframe = self.dataframe.replace(to_replace=NAN_TOFILE, value=np.nan)
+        dataframe.to_csv(file, compression=compression, index=False, header=True)
+
+
+class DataframeBase(FileBase, ABC): pass
+class DataframeMeta(FileMeta, ABCMeta): pass
+
+
+class DataframeFile(DataframeBase, metaclass=DataframeMeta, key="file"):
+    def __init__(self, *args, file, **kwargs):
+        head, tail = os.path.split(file)
+        name, ext = str(tail).split(".")
+        if ext == "zip":
+            directory = os.path.join(head, ".".join([name, "zip"]))
+            file = ".".join([tail, "csv"])
+        elif ext == "csv":
+            directory = None
+            file = os.path.join(head, ".".join([name, "csv"]))
         else:
-            archive = None
-            file = os.path.join(directory, ".".join([base, "csv"]))
-        return archive, file
+            raise ValueError(file)
+        self.__directory = directory
+        self.__file = file
+        self.__source = None
+        super().__init__(*args, **kwargs)
+
+    def __repr__(self):
+        string = "{cls}(directory={directory})" if self.directory is not None else "{cls}(file={file})"
+        return str(string).format(self.__class__.__name__, self.directory, self.file)
+
+    def __str__(self):
+        string = str(self.directory) if self.directory is not None else str(self.file)
+        return string
+
+    @property
+    def directory(self): return self.__directory
+    @property
+    def file(self): return self.__file
+    @property
+    def source(self): return self.__source
+    @source.setter
+    def source(self, source): self.__source = source
 
     def open(self, *args, mode, **kwargs):
         if mode not in ("r", "w", "a", "x"):
             raise ValueError(mode)
-        archive, file = self.archivefile
-        self.source = DataframeRecord.load(file, archive=archive) if self.mode in ("r", "a") else DataframeRecord.empty()
+        if mode in ("r", "a") and not os.path.exist(self.file):
+            raise FileNotFoundError(str(self.file))
+        elif mode == "x" and os.path.exist(self.file):
+            raise FileExistsError(str(self.file))
+        self.source = DataframeRecord.load(self.file, archive=self.directory) if mode in ("r", "a") else DataframeRecord()
         self.mode = mode
 
     def execute(self, *args, **kwargs):
         return DataframeHandler[self.mode](self.source, *args, **kwargs)
 
     def close(self, *args, **kwargs):
-        archive, file = self.archivefile
         if self.mode in ("w", "a", "x"):
-            self.source.save(file, archive=archive)
+            self.source.save(self.file, archive=self.directory)
         self.source.close()
         self.source = None
+        self.handler = None
         self.mode = None
         self.unlock()
 
