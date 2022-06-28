@@ -9,10 +9,9 @@ Created on Weds Jan 12 2022
 import os.path
 from io import BytesIO
 from zipfile import ZipFile
+from abc import ABC, ABCMeta
 
-from utilities.dispatchers import keyword_single_dispatcher as dispatcher
-
-from files.files import FileMeta, File
+from utilities.meta import RegistryMeta, LockingMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -26,11 +25,47 @@ _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) e
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 
 
-class Archive(File, metaclass=FileMeta):
-    def __init__(self, *args, **kwargs):
-        self.__destination = None
-        super().__init__(*args, **kwargs)
+class ArchiveMeta(LockingMeta, ABCMeta):
+    def __call__(cls, *args, **kwargs):
+        instance = super(ArchiveMeta, cls).__call__(*args, **kwargs)
+        instance.lock(str(instance))
+        instance.open(*args, **kwargs)
+        return instance
 
+
+class Archive(ABC, metaclass=ArchiveMeta):
+    def __init__(self, *args, directory, **kwargs):
+        self.__directory = directory
+        self.__source = None
+        self.__destination = None
+        self.__mode = None
+
+    def __repr__(self): return "{}(directory={})".format(self.__class__.__name__, self.file)
+    def __str__(self): return str(self.file)
+    def __bool__(self): return self.mode is not None
+
+    def __enter__(self): return self
+    def __exit__(self, error_type, error_value, error_traceback): self.close()
+
+    def __call__(self, *args, **kwargs):
+        if self.handler is None:
+            self.handler = self.execute(*args, **kwargs)
+        return self.handler
+
+    @property
+    def file(self): return self.__file
+    @property
+    def mode(self): self.__mode
+    @mode.setter
+    def mode(self, mode): self.__mode = mode
+    @property
+    def readable(self): return self.mode == "r"
+    @property
+    def writeable(self): return self.mode in ("w", "x", "a")
+    @property
+    def source(self): return self.__source
+    @source.setter
+    def source(self, source): self.__source = source
     @property
     def destination(self): return self.__destination
     @destination.setter
@@ -43,7 +78,10 @@ class Archive(File, metaclass=FileMeta):
             raise FileNotFoundError(str(self.file))
         elif mode == "x" and os.path.exist(self.file):
             raise FileExistsError(str(self.file))
-        self.source = ZipFile(self.directory, mode="r")
+        self.source = ZipFile(self.file, mode="r")
+        if self.writeable:
+            self.destination = ZipFile(BytesIO(), mode="w")
+        self.mode = mode
 
     def close(self, *args, **kwargs):
         self.source.close()
@@ -52,8 +90,8 @@ class Archive(File, metaclass=FileMeta):
             with ZipFile(self.file, mode="w") as archive:
                 content = self.destination.getbuffer()
                 archive.write(content)
-        self.destination.close()
-        self.destination = None
+            self.destination.close()
+            self.destination = None
         self.mode = None
         self.unlock(str(self))
 
@@ -66,22 +104,22 @@ class Archive(File, metaclass=FileMeta):
                 destination.writestr(file, content)
 
 
-class ArchiveFile(File):
-    def __init__(self, *args, directory, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__directory = directory
+# class ArchiveFile(File):
+#     def __init__(self, *args, directory, **kwargs):
+#         super().__init__(*args, **kwargs)
+#         self.__directory = directory
 
-    def __repr__(self): return "{}(directory={}, file={})".format(self.__class__.__name__, self.directory, self.file)
-    def __str__(self): return "|".join([str(self.directory), str(self.file)])
+#     def __repr__(self): return "{}(directory={}, file={})".format(self.__class__.__name__, self.directory, self.file)
+#     def __str__(self): return "|".join([str(self.directory), str(self.file)])
 
-    @property
-    def directory(self): return self.__directory
+#     @property
+#     def directory(self): return self.__directory
 
-    def opener(self, *args, mode, archive, **kwargs):
-        return archive.open(self.file, mode=mode)
+#     def opener(self, *args, mode, archive, **kwargs):
+#         return archive.open(self.file, mode=mode)
 
-    def execute(self, *args, **kwargs):
-        pass
+#     def execute(self, *args, **kwargs):
+#         pass
 
 #    @dispatcher("mode")
 #    def execute(self, *args, file, mode, **kwargs): pass

@@ -30,6 +30,7 @@ _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) els
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 _concat = lambda dataframes: pd.concat(dataframes, axis=0, ignore_index=True).drop_duplicates(inplace=True, ignore_index=True, keep="last")
+_function = lambda file, *a, mode, directory=None, **kw: DataframeRecord.load(file, archive=directory) if mode in ("r", "a") else DataframeRecord()
 
 
 class DataframeRecord(object):
@@ -84,9 +85,6 @@ class DataframeFile(File):
 
     @property
     def directory(self): return self.__directory
-
-    def opener(self, *args, mode, **kwargs):
-        return DataframeRecord.load(self.file, archive=self.directory) if mode in ("r", "a") else DataframeRecord()
 
     def open(self, *args, mode, **kwargs):
         if mode not in ("r", "w", "a", "x"):

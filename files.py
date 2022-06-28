@@ -13,7 +13,7 @@ from utilities.meta import RegistryMeta, LockingMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["FileMeta", "File", "FileLocation"]
+__all__ = ["File", "FileLocation"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -21,6 +21,7 @@ __license__ = ""
 _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _flatten = lambda y: [i for x in y for i in x]
+_function = lambda file, *a, mode, **kw: open(file, mode=mode)
 
 
 class FileLocation(Enum):
@@ -30,16 +31,25 @@ class FileLocation(Enum):
 
 
 class FileMeta(LockingMeta, ABCMeta):
-    def __call__(cls, *args, file, **kwargs):
-        instance = super(FileMeta, cls).__call__(*args, **kwargs)
+    def __init__(cls, *args, **kwargs):
+        cls._function = kwargs.get("function", getattr(cls, "function", None))
+
+    def __call__(cls, *args, **kwargs):
+        assert cls.function is not None
+        assert callable(cls.function)
+        instance = super(FileMeta, cls).__call__(*args, function=cls.function, **kwargs)
         instance.lock(str(instance))
         instance.open(*args, **kwargs)
         return instance
 
+    @property
+    def function(cls): return cls._function
 
-class File(ABC, metaclass=FileMeta):
-    def __init__(self, *args, file, **kwargs):
+
+class File(ABC, metaclass=FileMeta, function=_function):
+    def __init__(self, *args, file, function, **kwargs):
         self.__file = file
+        self.__function = function
         self.__source = None
         self.__handler = None
         self.__mode = None
@@ -67,7 +77,8 @@ class File(ABC, metaclass=FileMeta):
     def readable(self): return self.mode == "r"
     @property
     def writeable(self): return self.mode in ("w", "x", "a")
-
+    @property
+    def function(self): return self.__function
     @property
     def source(self): return self.__source
     @source.setter
@@ -77,13 +88,10 @@ class File(ABC, metaclass=FileMeta):
     @handler.setter
     def handler(self, handler): self.__handler = handler
 
-    def opener(self, *args, mode, **kwargs):
-        return open(self.file, mode=mode)
-
     def open(self, *args, mode, **kwargs):
         if mode not in ("r", "w", "a", "x"):
             raise ValueError(mode)
-        self.source = self.opener(*args, mode=mode, **kwargs)
+        self.source = self.function(self.file, *args, mode=mode, **kwargs)
         self.mode = mode
 
     def execute(self, *args, **kwargs):

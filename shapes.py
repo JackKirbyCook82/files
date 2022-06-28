@@ -25,6 +25,7 @@ __license__ = ""
 _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
+_function = lambda file, *a, mode, driver, crs, schema, **kw: fiona.open(file, mode=mode, driver=driver, crs=crs, schema=schema)
 
 
 class ShapeRecord(object):
@@ -49,7 +50,7 @@ class ShapeRecord(object):
         return {"geometry": geometry, "properties": properties}
 
 
-class ShapeFile(File):
+class ShapeFile(File, function=_function):
     def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.__driver = driver
@@ -67,9 +68,8 @@ class ShapeFile(File):
     def fields(self): return self.__fields
     @property
     def schema(self): return {"geometry": self.geometry, "properties": self.fields}
-
-    def opener(self, *args, mode, **kwargs):
-        return fiona.open(self.file, mode=mode, driver=self.driver, crs=self.crs, schema=self.schema)
+    @property
+    def parameters(self): return {"driver": self.driver, "crs": self.crs, "schema": self.schema}
 
     def execute(self, *args, **kwargs):
         return ShapeHandler[self.mode](self.source, *args, geometry=self.geometry, fields=self.fields, **kwargs)
