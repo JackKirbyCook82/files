@@ -14,6 +14,7 @@ from utilities.meta import RegistryMeta
 from utilities.shapes import Shape
 
 from files.files import File
+from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -75,6 +76,13 @@ class ShapeFile(File, function=_function):
         return ShapeHandler[self.mode](self.source, *args, geometry=self.geometry, fields=self.fields, **kwargs)
 
 
+class ShapeArchive(Archive):
+    pass
+
+#    def execute(self, *args, **kwargs):
+#        pass
+
+
 class ShapeHandler(ABC, metaclass=RegistryMeta):
     def __init__(self, source, *args, geometry, fields, **kwargs):
         self.__source = source
@@ -123,3 +131,4 @@ class ShapeWriter(ShapeWriter, key="a"):
         assert kwargs["geometry"] == geometry if "geometry" in kwargs.keys() else True
         assert tuple(kwargs["fields"]) == fields if "fields" in kwargs.keys() else True
         super().__init__(source, *args, geometry=geometry, fields=fields, **kwargs)
+

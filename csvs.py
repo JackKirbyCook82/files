@@ -12,6 +12,7 @@ from abc import ABC
 from utilities.meta import RegistryMeta
 
 from files.files import File, FileLocation
+from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -35,6 +36,13 @@ class CSVFile(File):
 
     def execute(self, *args, **kwargs):
         return CSVHandler[self.mode](self.source, *args, **kwargs)
+
+
+class CSVArchive(Archive):
+    pass
+
+#    def execute(self, *args, **kwargs):
+#        pass
 
 
 class CSVHandler(ABC, metaclass=RegistryMeta):
