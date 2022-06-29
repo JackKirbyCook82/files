@@ -10,7 +10,7 @@ import os.path
 from io import BytesIO
 from zipfile import ZipFile
 
-from utilities.dispatchers import keyword_single_dispatcher as dispatcher
+from utilities.dispatchers import keywordDispatcher as dispatcher
 
 from files.files import FileBase, FileMeta, File
 
@@ -34,15 +34,20 @@ class ClosedArchiveError(Exception): pass
 class Archive(FileBase, metaclass=FileMeta, function=_archive):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__destination = None
+        self.__reader = None
+        self.__writer = None
 
 #    def __call__(self, *args, **kwargs):
 #        pass
 
     @property
-    def destination(self): return self.__destination
-    @destination.setter
-    def destination(self, destination): self.__destination = destination
+    def reader(self): return self.__reader
+    @reader.setter
+    def reader(self, reader): self.__reader = reader
+    @property
+    def writer(self): return self.__writer
+    @writer.setter
+    def writer(self, writer): self.__writer = writer
 
     def open(self, *args, mode, **kwargs):
         if bool(self):
@@ -53,47 +58,47 @@ class Archive(FileBase, metaclass=FileMeta, function=_archive):
             raise FileNotFoundError(str(self.file))
         elif mode == "x" and os.path.exist(self.file):
             raise FileExistsError(str(self.file))
-        self.source = self.function(self.file, *args, mode=mode, **kwargs)
+        self.reader = self.function(self.file, *args, mode=mode, **kwargs)
         if self.writeable:
-            self.destination = ZipFile(BytesIO(), mode="w")
+            self.writer = ZipFile(BytesIO(), mode="w")
         self.mode = mode
 
     def close(self, *args, **kwargs):
         if not bool(self):
             raise ClosedArchiveError(str(self))
-        self.source.close()
-        self.source = None
+        self.reader.close()
+        self.reader = None
         if self.writeable:
             with ZipFile(self.directory, mode="w") as archive:
-                content = self.destination.getbuffer()
+                content = self.writer.getbuffer()
                 archive.write(content)
-            self.destination.close()
-            self.destination = None
+            self.writer.close()
+            self.writer = None
         self.mode = None
         self.unlock(str(self))
 
     @dispatcher("mode")
-    def archive(self, *args, file, mode, **kwargs): pass
+    def source(self, *args, file, mode, **kwargs): pass
 
-    @archive.register("r")
-    def reader(self, *args, file, mode="r", **kwargs):
+    @source.register("r")
+    def source_reader(self, *args, file, mode="r", **kwargs):
         assert mode == "r"
-        if file not in self.source.namelist():
+        if file not in self.reader.namelist():
             raise FileNotFoundError(str(self.directory), str(self.file))
-        return self.source
+        return self.reader
 
-    @archive.register("w", "x", "a")
-    def writer(self, *args, file, mode, **kwargs):
+    @source.register("w", "x", "a")
+    def source_writer(self, *args, file, mode, **kwargs):
         assert mode in ("w", "x", "a")
-        if mode == "a" and file not in self.source.namelist():
+        if mode == "a" and file not in self.reader.namelist():
             raise FileNotFoundError(str(self.directory), str(file))
-        elif mode == "x" and file in self.source.namelist():
+        elif mode == "x" and file in self.reader.namelist():
             raise FileExistsError(str(self.directory), str(file))
         if self.mode == "a" and mode == "a":
-            self.copy(self.source, self.destination, exclude=[])
+            self.copy(self.reader, self.writer, exclude=[])
         elif self.mode == "a" and mode != "a":
-            self.copy(self.source, self.destination, exclude=[file])
-        return self.destination
+            self.copy(self.reader, self.writer, exclude=[file])
+        return self.writer
 
     @staticmethod
     def copy(source, destination, exclude=[]):
@@ -103,7 +108,11 @@ class Archive(FileBase, metaclass=FileMeta, function=_archive):
                 content = source.read(file)
                 destination.writestr(file, content)
 
-#    def execute(self, archive, *args, **kwargs):
-#        pass
+    def execute(self, *args, **kwargs):
+        assert "file" in kwargs.keys() and "mode" in kwargs.keys()
+        source = self.source(*args, **kwargs)
+        function = lambda file, *a, mode, **kw: source.open(file, mode=mode)
+        return File(*args, function=function, **kwargs)
+
 
 

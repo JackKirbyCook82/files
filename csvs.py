@@ -39,10 +39,11 @@ class CSVFile(File):
 
 
 class CSVArchive(Archive):
-    pass
-
-#    def execute(self, *args, **kwargs):
-#        pass
+    def execute(self, *args, **kwargs):
+        assert "file" in kwargs.keys() and "mode" in kwargs.keys()
+        source = self.source(*args, **kwargs)
+        function = lambda file, *a, mode, **kw: source.open(file, mode=mode)
+        return CSVFile(*args, function=function, **kwargs)
 
 
 class CSVHandler(ABC, metaclass=RegistryMeta):

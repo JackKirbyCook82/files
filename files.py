@@ -32,13 +32,11 @@ class FileLocation(Enum):
 
 class OpenedFileError(Exception): pass
 class ClosedFileError(Exception): pass
-class SourceFileError(Exception): pass
 
 
 class FileBase(ABC, metaclass=ABCMeta):
     def __init__(self, *args, file, **kwargs):
         self.__file = file
-        self.__source = None
         self.__mode = None
 
     def __repr__(self): return "{}(file={})".format(self.__class__.__name__, self.file)
@@ -58,10 +56,6 @@ class FileBase(ABC, metaclass=ABCMeta):
     def readable(self): return self.mode == "r"
     @property
     def writeable(self): return self.mode in ("w", "x", "a")
-    @property
-    def source(self): return self.__source
-    @source.setter
-    def source(self, source): self.__source = source
 
     @abstractmethod
     def open(self, *args, mode, **kwargs): pass
@@ -86,10 +80,10 @@ class FileMeta(LockingMeta, ABCMeta):
 
 class File(FileBase, metaclass=FileMeta, function=_file):
     def __init__(self, *args, function, **kwargs):
-        if function is None or not callable(function):
-            raise SourceFileError(str(self))
+        assert function is not None and callable(function)
         super().__init__(*args, **kwargs)
         self.__function = function
+        self.__source = None
         self.__handler = None
 
     def __call__(self, *args, **kwargs):
@@ -101,6 +95,10 @@ class File(FileBase, metaclass=FileMeta, function=_file):
     def function(self): return self.__function
     @function.setter
     def function(self, function): self.__function = function
+    @property
+    def source(self): return self.__source
+    @source.setter
+    def source(self, source): self.__source = source
     @property
     def handler(self): return self.__handler
     @handler.setter

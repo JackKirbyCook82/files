@@ -17,7 +17,7 @@ from files.files import File
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["DataframeFile"]
+__all__ = ["DataframeRecords", "DataframeFile"]
 __copyright__ = "Copyright 2018, Jack Kirby Cook"
 __license__ = ""
 
@@ -30,20 +30,33 @@ _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) els
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 _concat = lambda dataframes: pd.concat(dataframes, axis=0, ignore_index=True).drop_duplicates(inplace=True, ignore_index=True, keep="last")
-_function = lambda file, *a, mode, directory=None, **kw: DataframeRecord.load(file, archive=directory) if mode in ("r", "a") else DataframeRecord()
+_function = lambda file, *a, mode, directory=None, **kw: DataframeRecords.load(file, archive=directory) if mode in ("r", "a") else DataframeRecords()
 
 
-class DataframeRecord(object):
+class DataframeRecords(object):
     def __init__(self, dataframe=None):
         self.__dataframe = dataframe
 
-    def __call__(self, dataframe=None):
-        dataframes = _filter([self.dataframe, dataframe])
+    def __iadd__(self, other):
+        assert isinstance(other, type(self))
+        dataframes = _filter([self.dataframe, other.dataframe])
+        if not dataframes:
+            return self
+        self.dataframe = _concat(dataframes)
+        return self
+
+    def __add__(self, other):
+        assert isinstance(other, type(self))
+        dataframes = _filter([self.dataframe, other.dataframe])
+        if not dataframes:
+            self.__class__()
         dataframe = _concat(dataframes)
-        self.__dataframe = dataframe
+        return self.__class__(dataframe)
 
     @property
     def dataframe(self): return self.__dataframe
+    @dataframe.setter
+    def dataframe(self, dataframe): self.__dataframe = dataframe
 
     @classmethod
     def load(cls, file, *args, archive=None, **kwargs):
@@ -111,7 +124,7 @@ class DataframeHandler(ABC, metaclass=RegistryMeta):
 
 
 class DataframeReader(DataframeHandler, key="r"):
-    def __call__(self): return self.source.dataframe
+    def __call__(self): return self.source
 
 
 class DataframeWriter(DataframeHandler, key=("w", "r", "a")):

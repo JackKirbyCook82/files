@@ -8,17 +8,17 @@ Created on Fri Jun 24 2022
 
 import fiona
 from abc import ABC
-from collections import OrderedDict as ODict
+from fiona.io import ZipMemoryFile
 
 from utilities.meta import RegistryMeta
-from utilities.shapes import Shape
+from utilities.shapes import ShapeRecord
 
 from files.files import File
 from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["ShapeFile"]
+__all__ = ["ShapeRecords", "ShapeFile"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -29,26 +29,20 @@ _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
 _function = lambda file, *a, mode, driver, crs, schema, **kw: fiona.open(file, mode=mode, driver=driver, crs=crs, schema=schema)
 
 
-class ShapeRecord(object):
-    def __init__(self, shape, record):
-        self.__shape = shape
-        self.__record = record
+class ShapeRecords(list):
+    def __init__(self, shaperecords):
+        assert isinstance(shaperecords, list)
+        assert all([isinstance(shaperecord, ShapeRecord) for shaperecord in shaperecords])
+        super().__init__(shaperecords)
 
-    @property
-    def shape(self): return self.__shape
-    @property
-    def record(self): return self.__record
+    def __iadd__(self, other):
+        assert isinstance(other, type(self))
+        self = self.__class__([*self, *other])
+        return self
 
-    @classmethod
-    def deserialize(cls, contents, *args, **kwargs):
-        shape = Shape.deserialize(contents["geometry"])
-        record = ODict([(key, value) for key, value in contents["properties"]])
-        return cls(shape, record)
-
-    def serialize(self, *args, fields, **kwargs):
-        geometry = self.shape.serialize()
-        properties = ODict([(field, self.record.get(field, None)) for field in fields])
-        return {"geometry": geometry, "properties": properties}
+    def __add__(self, other):
+        assert isinstance(other, type(self))
+        return self.__class__([*self, *other])
 
 
 class ShapeFile(File, function=_function):
@@ -77,10 +71,11 @@ class ShapeFile(File, function=_function):
 
 
 class ShapeArchive(Archive):
-    pass
-
-#    def execute(self, *args, **kwargs):
-#        pass
+    def execute(self, *args, **kwargs):
+        assert "file" in kwargs.keys() and "mode" in kwargs.keys()
+        source = self.source(*args, **kwargs)
+        function = lambda file, *a, mode, driver, crs, schema, **kw: ZipMemoryFile(source).open(file, mode=mode, driver=driver, crs=crs, schema=schema)
+        return ShapeFile(*args, function=function, **kwargs)
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):
@@ -124,7 +119,7 @@ class ShapeWriter(ShapeHandler, key=("w", "r")):
         self.source.write(contents)
 
 
-class ShapeWriter(ShapeWriter, key="a"):
+class ShapeAppender(ShapeWriter, key="a"):
     def __init__(self, source, *args, **kwargs):
         geometry = source.schema["geometry"]
         fields = tuple(source.schema["properties"].keys())
