@@ -37,9 +37,6 @@ class Archive(FileBase, metaclass=FileMeta, function=_archive):
         self.__reader = None
         self.__writer = None
 
-#    def __call__(self, *args, **kwargs):
-#        pass
-
     @property
     def reader(self): return self.__reader
     @reader.setter

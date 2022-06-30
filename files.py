@@ -38,12 +38,18 @@ class FileBase(ABC, metaclass=ABCMeta):
     def __init__(self, *args, file, **kwargs):
         self.__file = file
         self.__mode = None
+        self.__handler = None
 
     def __repr__(self): return "{}(file={})".format(self.__class__.__name__, self.file)
     def __str__(self): return str(self.file)
     def __bool__(self): return self.mode is not None
 
-    def __enter__(self): return self
+    def __call__(self, *args, **kwargs):
+        if self.handler is None:
+            self.handler = self.execute(*args, **kwargs)
+        return self.handler
+
+    def __enter__(self, *args, **kwargs): return self(*args, **kwargs)
     def __exit__(self, error_type, error_value, error_traceback): self.close()
 
     @property
@@ -53,12 +59,18 @@ class FileBase(ABC, metaclass=ABCMeta):
     @mode.setter
     def mode(self, mode): self.__mode = mode
     @property
+    def handler(self): return self.__handler
+    @handler.setter
+    def handler(self, handler): self.__handler = handler
+    @property
     def readable(self): return self.mode == "r"
     @property
     def writeable(self): return self.mode in ("w", "x", "a")
 
     @abstractmethod
     def open(self, *args, mode, **kwargs): pass
+    @abstractmethod
+    def execute(self, *args, **kwargs): pass
     @abstractmethod
     def close(self, *args, **kwargs): pass
 
@@ -84,12 +96,6 @@ class File(FileBase, metaclass=FileMeta, function=_file):
         super().__init__(*args, **kwargs)
         self.__function = function
         self.__source = None
-        self.__handler = None
-
-    def __call__(self, *args, **kwargs):
-        if self.handler is None:
-            self.handler = self.execute(*args, **kwargs)
-        return self.handler
 
     @property
     def function(self): return self.__function
@@ -99,10 +105,6 @@ class File(FileBase, metaclass=FileMeta, function=_file):
     def source(self): return self.__source
     @source.setter
     def source(self, source): self.__source = source
-    @property
-    def handler(self): return self.__handler
-    @handler.setter
-    def handler(self, handler): self.__handler = handler
 
     def execute(self, *args, **kwargs):
         return FileHandler[self.mode](self.source, *args, **kwargs)

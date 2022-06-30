@@ -27,27 +27,20 @@ _flatten = lambda y: [i for x in y for i in x]
 
 
 class CSVFile(File):
-    def __init__(self, *args, fields=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.__fields = fields
-
-    @property
-    def fields(self): return self.__fields
-
     def execute(self, *args, **kwargs):
         return CSVHandler[self.mode](self.source, *args, **kwargs)
 
 
-class CSVArchive(Archive):
-    def execute(self, *args, **kwargs):
-        assert "file" in kwargs.keys() and "mode" in kwargs.keys()
-        source = self.source(*args, **kwargs)
-        function = lambda file, *a, mode, **kw: source.open(file, mode=mode)
-        return CSVFile(*args, function=function, **kwargs)
+# class CSVArchive(Archive):
+#     def execute(self, *args, **kwargs):
+#         assert "file" in kwargs.keys() and "mode" in kwargs.keys()
+#         source = self.source(*args, **kwargs)
+#         function = lambda file, *a, mode, **kw: source.open(file, mode=mode)
+#         return CSVFile(*args, function=function, **kwargs)
 
 
 class CSVHandler(ABC, metaclass=RegistryMeta):
-    def __init__(self, source, *args, fields=None, header, **kwargs):
+    def __init__(self, source, *args, header, fields=None, **kwargs):
         assert isinstance(fields, (list, type(None)))
         assert isinstance(header, list)
         fields = tuple([field if field in header else None for field in fields]) if fields is not None else tuple(header)
