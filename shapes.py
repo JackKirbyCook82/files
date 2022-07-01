@@ -19,7 +19,7 @@ from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["ShapeRecord", "ShapeCollection", "ShapeFile"]
+__all__ = ["ShapeRecord", "ShapeCollection", "ShapeArchive"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -27,7 +27,6 @@ __license__ = ""
 _aslist = lambda items: list(items) if isinstance(items, (tuple, list, set)) else [items]
 _astuple = lambda items: tuple(items) if isinstance(items, (tuple, list, set)) else (items,)
 _filter = lambda items, by: [item for item in _aslist(items) if item is not by]
-_function = lambda file, *a, mode, driver, crs, schema, **kw: fiona.open(file, mode=mode, driver=driver, crs=crs, schema=schema)
 
 
 class ShapeRecord(object):
@@ -41,10 +40,9 @@ class ShapeRecord(object):
     def record(self): return self.__record
 
     @classmethod
-    def deserialize(cls, contents, *args, fields=None, **kwargs):
-        fields = fields if fields is not None else contents["properties"].keys()
+    def deserialize(cls, contents, *args, **kwargs):
         shape = Shape.deserialize(contents["geometry"])
-        record = ODict([(key, value) for key, value in contents["properties"] if key in fields])
+        record = ODict([(key, value) for key, value in contents["properties"]])
         return cls(shape, record)
 
     def serialize(self, *args, fields, **kwargs):
@@ -63,13 +61,12 @@ class ShapeCollection(list):
         return self.__class__([*self, *other])
 
 
-class ShapeFile(File, function=_function):
-    def __init__(self, *args, driver=None, crs=None, geometry=None, header=None, **kwargs):
-        super().__init__(*args, **kwargs)
+class ShapeBase(object):
+    def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
         self.__driver = driver
         self.__crs = crs
         self.__geometry = geometry
-        self.__header = header
+        self.__fields = fields
 
     @property
     def driver(self): return self.__driver
@@ -78,25 +75,23 @@ class ShapeFile(File, function=_function):
     @property
     def geometry(self): return self.__geometry
     @property
-    def header(self): return self.__header
+    def fields(self): return self.__fields
     @property
-    def schema(self): return {"geometry": self.geometry, "properties": self.header}
+    def schema(self): return {"geometry": self.geometry, "properties": self.fields}
     @property
     def parameters(self): return {"driver": self.driver, "crs": self.crs, "schema": self.schema}
 
-    def open(self, *args, **kwargs):
-        super().open(*args, **self.parameters, **kwargs)
 
-    def execute(self, *args, **kwargs):
-        return ShapeHandler[self.mode](self.source, *args, **kwargs)
+class ShapeFile(File, ShapeBase):
+    def getSource(self, *args, mode, **kwargs): return fiona.open(self.file, mode=mode, **self.parameters)
+    def getHandler(self, *args, mode, **kwargs): return ShapeHandler[mode](self.source, *args, **kwargs)
 
 
-# class ShapeArchive(Archive, Shape):
-#     def execute(self, *args, **kwargs):
-#         assert "file" in kwargs.keys() and "mode" in kwargs.keys()
-#         source = self.source(*args, **kwargs)
-#         function = lambda file, *a, mode, driver, crs, schema, **kw: ZipMemoryFile(source).open(file, mode=mode, driver=driver, crs=crs, schema=schema)
-#         return ShapeFile(*args, function=function, geometry=self.geometry, fields=self.fields, **kwargs)
+class ShapeArchive(Archive, ShapeBase):
+    def getReader(self, *args, **kwargs): return
+    def getWriter(self, *args, **kwargs): return
+    def getSource(self, *args, mode, **kwargs): return
+    def getHandler(self, *args, mode, **kwargs): return ShapeHandler[mode](self.source, *args, **kwargs)
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):

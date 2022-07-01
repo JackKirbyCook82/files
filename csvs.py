@@ -16,7 +16,7 @@ from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["CSVFile"]
+__all__ = ["CSVFile", "CSVArchive"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -27,16 +27,11 @@ _flatten = lambda y: [i for x in y for i in x]
 
 
 class CSVFile(File):
-    def execute(self, *args, **kwargs):
-        return CSVHandler[self.mode](self.source, *args, **kwargs)
+    def execute(self, *args, mode, **kwargs): return CSVHandler[mode](self.source, *args, **kwargs)
 
 
-# class CSVArchive(Archive):
-#     def execute(self, *args, **kwargs):
-#         assert "file" in kwargs.keys() and "mode" in kwargs.keys()
-#         source = self.source(*args, **kwargs)
-#         function = lambda file, *a, mode, **kw: source.open(file, mode=mode)
-#         return CSVFile(*args, function=function, **kwargs)
+class CSVArchive(Archive):
+    def execute(self, *args, mode, **kwargs): return CSVHandler[mode](self.source, *args, **kwargs)
 
 
 class CSVHandler(ABC, metaclass=RegistryMeta):
