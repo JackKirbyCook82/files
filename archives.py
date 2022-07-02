@@ -8,7 +8,7 @@ Created on Weds Jan 12 2022
 
 import os.path
 from io import BytesIO
-from zipfile import ZipFile
+from zipfile import ZipFile, Path
 
 from utilities.meta import LockingMeta
 from utilities.dispatchers import keywordDispatcher as dispatcher
@@ -51,7 +51,7 @@ class Archive(object, metaclass=ArchiveMeta):
         self.__handler = None
 
     def __repr__(self): return "{}(directory={}, file={})".format(self.__class__.__name__, self.directory, self.file)
-    def __str__(self): return "|".join([str(self.directory), str(self.file)])
+    def __str__(self): return str(self.path)
     def __bool__(self): return self.source is not None
 
     def __enter__(self, *args, **kwargs): return self.handler
@@ -62,7 +62,7 @@ class Archive(object, metaclass=ArchiveMeta):
     @property
     def file(self): return self.file
     @property
-    def dirfile(self): return "zip://{directory}!{file}".format(directory=self.directory, file=self.file)
+    def path(self): return Path(self.directory, self.file)
     @property
     def reader(self): return self.__reader
     @reader.setter
@@ -82,7 +82,7 @@ class Archive(object, metaclass=ArchiveMeta):
 
     def getReader(self, *args, **kwargs): return ZipFile(self.directory, mode="r")
     def getWriter(self, *args, **kwargs): return ZipFile(BytesIO(), mode="w")
-    def getSource(self, file, *args, mode, **kwargs): return self.archive.open(file, mode=mode)
+    def getSource(self, *args, mode, **kwargs): return self.reader.open(self.file, mode=mode) if mode == "r" else self.writer.open(self.file, mode=mode)
     def getHandler(self, *args, mode, **kwargs): return FileHandler[mode](self.source, *args, **kwargs)
 
     @staticmethod
@@ -103,7 +103,7 @@ class Archive(object, metaclass=ArchiveMeta):
             raise OpenedArchiveError(str(self))
         self.lock(str(self))
         self.reader = self.getReader(*args, mode="r", **kwargs)
-        self.source = self.getSource(self.reader, self.file, *args, mode="r", **kwargs)
+        self.source = self.getSource(*args, mode="r", **kwargs)
 
     @open.register("w", "x", "a")
     def open_writer(self, *args, mode, **kwargs):
@@ -113,12 +113,12 @@ class Archive(object, metaclass=ArchiveMeta):
         self.lock(str(self))
         self.writer = self.getWriter(*args, mode="w", **kwargs)
         if os.path.exist(self.directory):
-            self.reader = self.getReader(self.directory, self.file, args, mode="r", **kwargs)
+            self.reader = self.getReader(*args, mode="r", **kwargs)
             exclude = [self.file] if mode == "a" else []
             self.copy(self.reader, self.writer, exclude=exclude)
         if self.file in self.reader.namelist() and mode == "x":
             raise FileExistsError(str(self))
-        self.source = self.getSource(self.writer, self.file, *args, mode=mode, **kwargs)
+        self.source = self.getSource(*args, mode=mode, **kwargs)
 
     def close(self, *args, **kwargs):
         if not bool(self):
@@ -138,5 +138,5 @@ class Archive(object, metaclass=ArchiveMeta):
         self.unlock(str(self))
 
     def execute(self, *args, mode, **kwargs):
-        self.handler = self.getHandler(self.source, *args, mode=mode, **kwargs)
+        self.handler = self.getHandler(*args, mode=mode, **kwargs)
 

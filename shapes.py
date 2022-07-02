@@ -7,19 +7,19 @@ Created on Fri Jun 24 2022
 """
 
 import fiona
+import os.path
 from abc import ABC
-from fiona.io import ZipMemoryFile
+from zipfile import Path
 from collections import OrderedDict as ODict
 
 from utilities.meta import RegistryMeta
 from utilities.shapes import Shape
 
 from files.files import File
-from files.archives import Archive
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
-__all__ = ["ShapeRecord", "ShapeCollection", "ShapeArchive"]
+__all__ = ["ShapeRecord", "ShapeFile"]
 __copyright__ = "Copyright 2022, Jack Kirby Cook"
 __license__ = ""
 
@@ -51,16 +51,6 @@ class ShapeRecord(object):
         return {"geometry": geometry, "properties": properties}
 
 
-class ShapeCollection(list):
-    def __init__(self, shaperecords=[]):
-        assert all([isinstance(shaperecord, ShapeRecord) for shaperecord in _aslist(shaperecords)])
-        super().__init__(_aslist(shaperecords))
-
-    def __add__(self, other):
-        assert isinstance(other, type(self))
-        return self.__class__([*self, *other])
-
-
 class ShapeBase(object):
     def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
         self.__driver = driver
@@ -68,6 +58,8 @@ class ShapeBase(object):
         self.__geometry = geometry
         self.__fields = fields
 
+    @property
+    def parameters(self): return {"driver": self.driver, "crs": self.crs, "schema": self.schema}
     @property
     def driver(self): return self.__driver
     @property
@@ -78,19 +70,25 @@ class ShapeBase(object):
     def fields(self): return self.__fields
     @property
     def schema(self): return {"geometry": self.geometry, "properties": self.fields}
-    @property
-    def parameters(self): return {"driver": self.driver, "crs": self.crs, "schema": self.schema}
 
 
 class ShapeFile(File, ShapeBase):
+    def __init__(self, *args, file, **kwargs):
+        assert str(file).endswith(".shp")
+        archive, file = self.split(file)
+        path = Path(archive, file)
+        uri = "zip://{}!{}".format(path.root.filename, path.name)
+        super().__init__(*args, file=uri, **kwargs)
+
+    @staticmethod
+    def split(file):
+        head, tail = os.path.split(file)
+        name, ext = os.path.splitext(tail)
+        archive = os.path.join(head, ".".join([name, "zip"]))
+        file = ".".join([name, ext])
+        return archive, file
+
     def getSource(self, *args, mode, **kwargs): return fiona.open(self.file, mode=mode, **self.parameters)
-    def getHandler(self, *args, mode, **kwargs): return ShapeHandler[mode](self.source, *args, **kwargs)
-
-
-class ShapeArchive(Archive, ShapeBase):
-    def getReader(self, *args, **kwargs): return
-    def getWriter(self, *args, **kwargs): return
-    def getSource(self, *args, mode, **kwargs): return
     def getHandler(self, *args, mode, **kwargs): return ShapeHandler[mode](self.source, *args, **kwargs)
 
 

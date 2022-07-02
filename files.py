@@ -75,7 +75,7 @@ class File(object, metaclass=FileMeta):
         if bool(self):
             raise OpenedFileError(str(self))
         self.lock(str(self))
-        self.source = self.getSource(self.file, *args, mode=mode, **kwargs)
+        self.source = self.getSource(*args, mode=mode, **kwargs)
 
     def close(self, *args, **kwargs):
         if not bool(self):
@@ -86,7 +86,7 @@ class File(object, metaclass=FileMeta):
         self.unlock(str(self))
 
     def execute(self, *args, mode, **kwargs):
-        self.handler = self.getHandler(self.source, *args, mode=mode, **kwargs)
+        self.handler = self.getHandler(*args, mode=mode, **kwargs)
 
 
 class FileHandler(ABC, metaclass=RegistryMeta):
