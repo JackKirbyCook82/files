@@ -45,9 +45,9 @@ class ShapeRecord(object):
         record = ODict([(key, value) for key, value in contents["properties"]])
         return cls(shape, record)
 
-    def serialize(self, *args, fields, **kwargs):
+    def serialize(self, *args, **kwargs):
         geometry = self.shape.serialize()
-        properties = ODict([(field, self.record.get(field, None)) for field in fields])
+        properties = ODict([(key, value) for key, value in self.record.items()])
         return {"geometry": geometry, "properties": properties}
 
 
@@ -93,13 +93,10 @@ class ShapeFile(File, ShapeBase):
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):
-    def __init__(self, source, *args, geometry, header, fields=None, **kwargs):
-        assert isinstance(fields, (list, type(None)))
-        assert isinstance(header, list)
-        fields = tuple([field if field in header else None for field in fields]) if fields is not None else tuple(header)
+    def __init__(self, source, *args, geometry, fields, **kwargs):
+        assert isinstance(fields, list)
         self.__source = source
         self.__geometry = geometry
-        self.__header = header
         self.__fields = fields
 
     @property
@@ -107,24 +104,22 @@ class ShapeHandler(ABC, metaclass=RegistryMeta):
     @property
     def geometry(self): return self.__geometry
     @property
-    def header(self): return self.__header
-    @property
     def fields(self): return self.__fields
 
 
 class ShapeReader(ShapeHandler, key="r"):
     def __init__(self, source, *args, **kwargs):
         geometry = source.schema["geometry"]
-        header = tuple(source.schema["properties"].keys())
+        fields = tuple(source.schema["properties"].keys())
         assert kwargs["geometry"] == geometry if "geometry" in kwargs.keys() else True
-        assert tuple(kwargs["header"]) == header if "header" in kwargs.keys() else True
-        super().__init__(source, *args, geometry=geometry, header=header, **kwargs)
+        assert tuple(kwargs["fields"]) == fields if "fields" in kwargs.keys() else True
+        super().__init__(source, *args, geometry=geometry, fields=fields, **kwargs)
 
     def __next__(self):
         contents = next(self.source)
         assert contents["geometry"]["type"] == self.geometry
-        assert tuple(contents["properties"].keys()) == self.header
-        return ShapeRecord.deserialize(contents, fields=self.fields)
+        assert tuple(contents["properties"].keys()) == self.fields
+        return ShapeRecord.deserialize(contents)
 
     def __iter__(self):
         return self
@@ -133,17 +128,17 @@ class ShapeReader(ShapeHandler, key="r"):
 class ShapeWriter(ShapeHandler, key=("w", "r")):
     def __call__(self, shaperecord):
         assert isinstance(shaperecord, ShapeRecord)
-        contents = shaperecord.serialize(fields=self.fields)
+        contents = shaperecord.serialize()
         assert contents["geometry"]["type"] == self.geometry
-        assert tuple(contents["properties"].keys() == self.header)
+        assert tuple(contents["properties"].keys() == self.fields)
         self.source.write(contents)
 
 
 class ShapeAppender(ShapeWriter, key="a"):
     def __init__(self, source, *args, **kwargs):
         geometry = source.schema["geometry"]
-        header = tuple(source.schema["properties"].keys())
+        fields = tuple(source.schema["properties"].keys())
         assert kwargs["geometry"] == geometry if "geometry" in kwargs.keys() else True
-        assert tuple(kwargs["header"]) == header if "header" in kwargs.keys() else True
-        super().__init__(source, *args, geometry=geometry, header=header, **kwargs)
+        assert tuple(kwargs["fields"]) == fields if "fields" in kwargs.keys() else True
+        super().__init__(source, *args, geometry=geometry, fields=fields, **kwargs)
 
