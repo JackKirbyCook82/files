@@ -10,10 +10,9 @@ import os.path
 from io import BytesIO
 from zipfile import ZipFile, Path
 
-from utilities.meta import LockingMeta
 from utilities.dispatchers import keywordDispatcher as dispatcher
 
-from files.files import FileHandler
+from files.files import FileMeta, FileHandler
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -31,17 +30,13 @@ class OpenedArchiveError(Exception): pass
 class ClosedArchiveError(Exception): pass
 
 
-class ArchiveMeta(LockingMeta):
-    def __call__(cls, *args, mode, **kwargs):
-        if mode not in ("r", "w", "x", "a"):
-            raise ValueError(mode)
-        instance = super(ArchiveMeta, cls).__call__(*args, **kwargs)
-        instance.open(*args, mode=mode, **kwargs)
-        instance.execute(*args, mode=mode, **kwargs)
+class ArchiveMeta(FileMeta):
+    def __call__(cls, *args, file, directory, mode, **kwargs):
+        instance = super(ArchiveMeta, cls).__call__(*args, directory=directory, file=file, **kwargs)
         return instance
 
 
-class Archive(object, metaclass=ArchiveMeta):
+class Archive(object, metaclass=FileMeta):
     def __init__(self, *args, directory, file, **kwargs):
         self.__directory = directory
         self.__file = file
@@ -101,7 +96,7 @@ class Archive(object, metaclass=ArchiveMeta):
         assert mode == "r"
         if bool(self):
             raise OpenedArchiveError(str(self))
-        self.lock(str(self))
+        self.__class__.lock(str(self.file))
         self.reader = self.getReader(*args, mode="r", **kwargs)
         self.source = self.getSource(*args, mode="r", **kwargs)
 
@@ -110,7 +105,7 @@ class Archive(object, metaclass=ArchiveMeta):
         assert mode in ("w", "x", "a")
         if bool(self):
             raise OpenedArchiveError(str(self))
-        self.lock(str(self))
+        self.__class__.lock(str(self.file))
         self.writer = self.getWriter(*args, mode="w", **kwargs)
         if os.path.exist(self.directory):
             self.reader = self.getReader(*args, mode="r", **kwargs)
@@ -135,7 +130,7 @@ class Archive(object, metaclass=ArchiveMeta):
             self.writer.close()
             self.writer = None
         self.handler = None
-        self.unlock(str(self))
+        self.__class__.unlock(str(self.file))
 
     def execute(self, *args, mode, **kwargs):
         self.handler = self.getHandler(*args, mode=mode, **kwargs)

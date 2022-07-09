@@ -27,11 +27,11 @@ _flatten = lambda y: [i for x in y for i in x]
 
 
 class CSVFile(File):
-    def execute(self, *args, mode, **kwargs): return CSVHandler[mode](self.source, *args, **kwargs)
+    def execute(self, *args, mode, fields=None, **kwargs): return CSVHandler[mode](self.source, *args, fields=fields, **kwargs)
 
 
 class CSVArchive(Archive):
-    def execute(self, *args, mode, **kwargs): return CSVHandler[mode](self.source, *args, **kwargs)
+    def execute(self, *args, mode, fields=None, **kwargs): return CSVHandler[mode](self.source, *args, fields=fields, **kwargs)
 
 
 class CSVHandler(ABC, metaclass=RegistryMeta):

@@ -6,10 +6,11 @@ Created on Weds Jan 12 2022
 
 """
 
+import threading
 from enum import Enum
 from abc import ABC
 
-from utilities.meta import RegistryMeta, LockingMeta
+from utilities.meta import RegistryMeta
 
 __version__ = "1.0.0"
 __author__ = "Jack Kirby Cook"
@@ -33,14 +34,28 @@ class OpenedFileError(Exception): pass
 class ClosedFileError(Exception): pass
 
 
-class FileMeta(LockingMeta):
-    def __call__(cls, *args, mode, **kwargs):
+class FileMeta(type):
+    locks = {}
+
+    def __call__(cls, *args, file, mode, **kwargs):
         if mode not in ("r", "w", "x", "a"):
             raise ValueError(mode)
-        instance = super(FileMeta, cls).__call__(*args, **kwargs)
+        instance = super(FileMeta, cls).__call__(*args, file=file, **kwargs)
         instance.open(*args, mode=mode, **kwargs)
         instance.execute(*args, mode=mode, **kwargs)
         return instance
+
+    @staticmethod
+    def lock(key):
+        if key not in FileMeta.locks.keys():
+            FileMeta.locks[key] = threading.Lock()
+        FileMeta.locks[key].acquire(blocking=True)
+
+    @staticmethod
+    def unlock(key):
+        if key not in FileMeta.locks.keys():
+            return
+        FileMeta.locks[key].release()
 
 
 class File(object, metaclass=FileMeta):
@@ -73,8 +88,8 @@ class File(object, metaclass=FileMeta):
     def open(self, *args, mode, **kwargs):
         assert mode in ("r", "w", "x", "a")
         if bool(self):
-            raise OpenedFileError(str(self))
-        self.lock(str(self))
+            raise OpenedFileError(str(self.file))
+        self.__class__.lock(str(self))
         self.source = self.getSource(*args, mode=mode, **kwargs)
 
     def close(self, *args, **kwargs):
@@ -83,7 +98,7 @@ class File(object, metaclass=FileMeta):
         self.source.close()
         self.source = None
         self.handler = None
-        self.unlock(str(self))
+        self.__class__.unlock(str(self.file))
 
     def execute(self, *args, mode, **kwargs):
         self.handler = self.getHandler(*args, mode=mode, **kwargs)

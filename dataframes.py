@@ -33,12 +33,18 @@ _concat = lambda dataframes: pd.concat(dataframes, axis=0, ignore_index=True)
 _drop = lambda dataframe: dataframe.drop_duplicates(inplace=False, ignore_index=True, keep="last")
 
 
+class DataframeFormatError(Exception): pass
+
+
 class DataframeRecordMeta(RegistryMeta, ABCMeta):
-    def __call__(cls, file, *args, archive=True, mode, **kwargs):
-        assert isinstance(archive, bool)
-        archive, file = cls.split(file) if bool(archive) else (None, file)
+    def __init__(cls, *args, **kwargs):
+        cls.__fileformat__ = kwargs.get("fileformat", getattr(cls, "__fileformat__", "csv"))
+        cls.__archiveformat__ = kwargs.get("archiveformat", getattr(cls, "__archiveformat__", "zip"))
+
+    def __call__(cls, *args, file, mode, **kwargs):
+        archive, file = cls.archivefile(file)
         dataframe = cls.load(*args, file=file, archive=archive, **kwargs) if mode in ("r", "a") else pd.DataFrame()
-        instance = super(DataframeRecordMeta, cls[mode]).__call__(dataframe, *args, **kwargs)
+        instance = super(DataframeRecordMeta, cls[mode]).__call__(dataframe, *args, file=file, archive=bool(archive), **kwargs)
         return instance
 
     @staticmethod
@@ -47,20 +53,33 @@ class DataframeRecordMeta(RegistryMeta, ABCMeta):
         header = None if not header else 0
         compression = dict(method="zip", archive_name=file) if archive is not None else None
         file = archive if archive is not None else file
-        dataframe = pd.read_csv(file, compression=compression, index_col=index, header=header, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
+        try:
+            dataframe = pd.read_csv(file, compression=compression, index_col=index, header=header, na_values=NAN_FROMFILE).dropna(axis=0, how="all")
+        except pd.errors.EmptyDataError:
+            dataframe = pd.DataFrame()
         dataframe = dataframe.to_frame() if not isinstance(dataframe, pd.DataFrame) else dataframe
         return dataframe
 
-    @staticmethod
-    def split(file):
+    @property
+    def fileformat(cls): return cls.__fileformat__
+    @property
+    def archiveformat(cls): return cls.__archiveformat__
+
+    def archivefile(cls, file):
         head, tail = os.path.split(file)
-        name, ext = os.path.splitext(tail)
-        archive = os.path.join(head, ".".join([name, "zip"]))
-        file = ".".join([name, ext])
+        name, extension = os.path.splitext(tail)
+        if extension == cls.archiveformat:
+            archive = os.path.join(head, tail)
+            file = ".".join([name, cls.fileformat])
+        elif extension == cls.fileformat:
+            archive = None
+            file = os.path.join(head, tail)
+        else:
+            raise DataframeFormatError(str(file))
         return archive, file
 
 
-class DataframeRecord(ABC, metaclass=DataframeRecordMeta):
+class DataframeRecord(ABC, metaclass=DataframeRecordMeta, fileformat="csv", archiveformat="zip"):
     def __init__(self, dataframe, *args, file, archive=None, index=False, header=True, parsers={}, parser=None, **kwargs):
         assert isinstance(dataframe, (pd.DataFrame, pd.Series))
         self.__file = file
@@ -78,10 +97,14 @@ class DataframeRecord(ABC, metaclass=DataframeRecordMeta):
 
     @property
     def dataframe(self): return self.__dataframe
+    @dataframe.setter
+    def dataframe(self, dataframe): self.__dataframe = dataframe
     @property
     def file(self): return self.__file
     @property
     def archive(self): return self.__archive
+    @property
+    def archived(self): return self.__archive is not None
     @property
     def index(self): return self.__index
     @property
@@ -116,8 +139,8 @@ class WriterDataframeRecord(DataframeRecord, keys=("w", "x", "a")):
         self.dataframe = dataframe
 
     def save(self):
-        compression = dict(method="zip", archive_name=self.file) if self.archive is not None else None
-        file = self.archive if self.archive is not None else self.file
+        compression = dict(method="zip", archive_name=self.file) if self.archived else None
+        file = self.archive if self.archived else self.file
         dataframe = self.dataframe.replace(inplace=False, to_replace=NAN_TOFILE, value=np.nan)
         dataframe.to_csv(file, compression=compression, index=self.index, header=self.header)
 
@@ -127,27 +150,8 @@ class WriterDataframeRecord(DataframeRecord, keys=("w", "x", "a")):
         self.dataframe = pd.DataFrame()
 
 
-class DataFrameBase(object):
-    def __init__(self, *args, index=False, header=True, parsers={}, parser=None, **kwargs):
-        self.__index = index
-        self.__header = header
-        self.__parsers = parsers
-        self.__parser = parser
-
-    @property
-    def parameters(self): return {"index": self.index, "header": self.header, "parsers": self.parsers, "parser": self.parser}
-    @property
-    def index(self): return self.__index
-    @property
-    def header(self): return self.__header
-    @property
-    def parsers(self): return self.__parsers
-    @property
-    def parser(self): return self.__parser
-
-
-class DataframeFile(File, DataFrameBase):
-    def getSource(self, *args, mode, **kwargs): return DataframeRecord(self.file, *args, archive=True, mode=mode, **self.parameters, **kwargs)
+class DataframeFile(File):
+    def getSource(self, *args, mode, **kwargs): return DataframeRecord(*args, file=self.file, mode=mode, **kwargs)
     def getHandler(self, *args, mode, **kwargs): return DataframeHandler[mode](self.source, *args, **kwargs)
 
 
@@ -167,7 +171,7 @@ class DataframeReader(DataframeHandler, key="r"):
         return dataframe
 
 
-class DataframeWriter(DataframeHandler, key=("w", "r", "a")):
+class DataframeWriter(DataframeHandler, key=("w", "x", "a")):
     def __call__(self, dataframe, index=None, header=None):
         if index is not None:
             dataframe = dataframe.set_index(index, drop=True, inplace=False)

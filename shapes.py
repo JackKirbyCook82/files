@@ -6,7 +6,7 @@ Created on Fri Jun 24 2022
 
 """
 
-import fiona
+# import fiona
 import os.path
 from abc import ABC
 from zipfile import Path
@@ -51,28 +51,7 @@ class ShapeRecord(object):
         return {"geometry": geometry, "properties": properties}
 
 
-class ShapeBase(object):
-    def __init__(self, *args, driver=None, crs=None, geometry=None, fields=None, **kwargs):
-        self.__driver = driver
-        self.__crs = crs
-        self.__geometry = geometry
-        self.__fields = fields
-
-    @property
-    def parameters(self): return {"driver": self.driver, "crs": self.crs, "schema": self.schema}
-    @property
-    def driver(self): return self.__driver
-    @property
-    def crs(self): return self.__crs
-    @property
-    def geometry(self): return self.__geometry
-    @property
-    def fields(self): return self.__fields
-    @property
-    def schema(self): return {"geometry": self.geometry, "properties": self.fields}
-
-
-class ShapeFile(File, ShapeBase):
+class ShapeFile(File):
     def __init__(self, *args, file, **kwargs):
         assert str(file).endswith(".shp")
         archive, file = self.split(file)
@@ -88,8 +67,12 @@ class ShapeFile(File, ShapeBase):
         file = ".".join([name, ext])
         return archive, file
 
-    def getSource(self, *args, mode, **kwargs): return fiona.open(self.file, mode=mode, **self.parameters)
-    def getHandler(self, *args, mode, **kwargs): return ShapeHandler[mode](self.source, *args, **kwargs)
+    def getSource(self, *args, mode, driver=None, crs=None, geometry=None, fields={}, **kwargs):
+        schema = dict(geometry=geometry, properties=fields) if geometry is not None else None
+        return fiona.open(self.file, mode=mode, driver=driver, crs=crs, schema=schema)
+
+    def getHandler(self, *args, mode, **kwargs):
+        return ShapeHandler[mode](self.source, *args, **kwargs)
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):
