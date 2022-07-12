@@ -57,7 +57,8 @@ class ShapeFile(File):
         archive, file = self.split(file)
         path = Path(archive, file)
         uri = "zip://{}!{}".format(path.root.filename, path.name)
-        super().__init__(*args, file=uri, **kwargs)
+        super().__init__(*args, file=file, **kwargs)
+        self.__uri = uri
 
     @staticmethod
     def split(file):
@@ -69,10 +70,13 @@ class ShapeFile(File):
 
     def getSource(self, *args, mode, driver=None, crs=None, geometry=None, fields={}, **kwargs):
         schema = dict(geometry=geometry, properties=fields) if geometry is not None else None
-        return fiona.open(self.file, mode=mode, driver=driver, crs=crs, schema=schema)
+        return fiona.open(self.uri, mode=mode, driver=driver, crs=crs, schema=schema)
 
     def getHandler(self, *args, mode, **kwargs):
         return ShapeHandler[mode](self.source, *args, **kwargs)
+
+    @property
+    def uri(self): return self.__uri
 
 
 class ShapeHandler(ABC, metaclass=RegistryMeta):
