@@ -40,6 +40,7 @@ class DataframeRecordMeta(RegistryMeta, ABCMeta):
     def __init__(cls, *args, **kwargs):
         cls.__fileformat__ = kwargs.get("fileformat", getattr(cls, "__fileformat__", "csv"))
         cls.__archiveformat__ = kwargs.get("archiveformat", getattr(cls, "__archiveformat__", "zip"))
+        super(DataframeRecordMeta, cls).__init__(*args, **kwargs)
 
     def __call__(cls, *args, file, mode, **kwargs):
         archive, file = cls.archivefile(file)
@@ -67,7 +68,7 @@ class DataframeRecordMeta(RegistryMeta, ABCMeta):
 
     def archivefile(cls, file):
         head, tail = os.path.split(file)
-        name, extension = os.path.splitext(tail)
+        name, extension = str(tail).split(".")
         if extension == cls.archiveformat:
             archive = os.path.join(head, tail)
             file = ".".join([name, cls.fileformat])
